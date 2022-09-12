@@ -4,6 +4,7 @@ import os
 import datetime
 import warnings
 
+
 def read_readcard(name="readcard_dan1.csv"):
     with open(f'kljucki/{name}', 'r') as conn:
         course_table = conn.readlines()
@@ -19,6 +20,7 @@ def read_readcard(name="readcard_dan1.csv"):
     tab1 = [tuple(i) for i in result_table]
     array_table = np.array(tab1, dtype=head1)
     return array_table
+
 
 def get_team_raw_table(siid, readcard_table):
     id_in_readcard_table = np.where(readcard_table['SIID'] == str(siid))[0]
@@ -74,6 +76,7 @@ def print_log(data_table, team_raw_table, start_time, finish_time, final_cumulat
 
     return text_output
 
+
 def convert_from_timedelta_to_time(timedelta_obj):
     return datetime.time(timedelta_obj.seconds // 3600, timedelta_obj.seconds % 3600 // 60,
                          timedelta_obj.seconds % 60)
@@ -92,7 +95,7 @@ def recalculate_results(prefix='dan1'):
         if team_number == 'STOP' or team_number is None:
             break
         team_siid = int(sheet[f'B{excel_row_index}'].value)
-        print(f'Looking team {team_number}')
+        print(f'\n{"-" * 83}\n{"-" * 83}\n\n\tTeam number: {team_number}\n')
 
         # if not os.path.isfile(f'kljucki/{team_number}.txt'):
         #     print(f'team {team_number} is not in the folder yet.')
@@ -114,8 +117,7 @@ def recalculate_results(prefix='dan1'):
             time_list = course_table[line_id][1].split(":")
             # course_table[line_id][1] = datetime.datetime.strptime(course_table[line_id][1], '%H:%M:%S').time()
             course_table[line_id][1] = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
-                                           seconds=float(time_list[2]))
-        print(course_table)
+                                                          seconds=float(time_list[2]))
 
         data_table = np.zeros(len(course_table), dtype=[('dead_time', object),
                                                         ('cumulative_dead_time', object),
@@ -136,7 +138,6 @@ def recalculate_results(prefix='dan1'):
             raise Exception(f'Expected that first point is "FINISH" and not {team_raw_table[-1][0]}')
         finish_time = team_raw_table[-1]['time']
 
-        print(team_raw_table['cp_id'])
         previous_team_id = 0  # this is here to check if order of control points is okay
         for id1, cp in enumerate(course_table):
             # 3 things that need to be done in this for loop:
@@ -171,7 +172,6 @@ def recalculate_results(prefix='dan1'):
                 raise Exception('Order of control points is not correct!')
             previous_team_id = max(matched_ids)
 
-
             if len(matched_ids) == 1:
                 data_table['dead_time'][id1] = datetime.timedelta()
             elif len(matched_ids) == 2:
@@ -180,14 +180,17 @@ def recalculate_results(prefix='dan1'):
                 if abs(dead_time_start_id - dead_time_finish_id) != 1:
                     warnings.warn(f'Control points for  dead time should be one after another but they are not! check!')
                 if 'mrtvi' not in cp:
-                    warnings.warn(f'There is dead time where it was not supposed to happen (cp id = {cp[0]}, cp {cp[2]}')
-                data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][dead_time_start_id]
+                    warnings.warn(
+                        f'There is dead time where it was not supposed to happen (cp id = {cp[0]}, cp {cp[2]}')
+                data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
+                    dead_time_start_id]
             else:
                 warnings.warn('Did not expect more than 2 records of the card!')
             data_table['found_point'][id1] = True
-            data_table['exceeded_maximum_time'][id1] = team_raw_table['time'][matched_ids[0]] > data_table['maximum_time'][id1]
+            data_table['exceeded_maximum_time'][id1] = team_raw_table['time'][matched_ids[0]] > \
+                                                       data_table['maximum_time'][id1]
             data_table['print_on'][id1] = matched_ids[0]
-        data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] +  data_table['dead_time'][-2]
+        data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
         final_cumulative_dead_time = data_table['cumulative_dead_time'][-1]
         number_of_cp = np.sum(np.logical_and(data_table['found_point'],
                                              np.logical_not(data_table['exceeded_maximum_time'])))
@@ -200,7 +203,8 @@ def recalculate_results(prefix='dan1'):
         sheet[f'E{excel_row_index}'].value = convert_from_timedelta_to_time(finish_time - start_time)  # tot time wdt
         # description of dead time
         sheet[f'G{excel_row_index}'].value = convert_from_timedelta_to_time(final_cumulative_dead_time)  # tot time wdt
-        sheet[f'H{excel_row_index}'].value = convert_from_timedelta_to_time(finish_time - start_time - final_cumulative_dead_time)  # tot time wdt
+        sheet[f'H{excel_row_index}'].value = convert_from_timedelta_to_time(
+            finish_time - start_time - final_cumulative_dead_time)  # tot time wdt
         # number of exceded max time
         # order of CP
         sheet[f'K{excel_row_index}'].value = number_of_cp
@@ -208,8 +212,5 @@ def recalculate_results(prefix='dan1'):
     workbook.save(filename="output.xlsx")
 
 
-recalculate_results()
-
-
-
-1 == 1
+if __name__ == "__main__":
+    recalculate_results()
