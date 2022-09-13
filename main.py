@@ -83,13 +83,13 @@ def convert_from_timedelta_to_time(timedelta_obj):
 
 
 def recalculate_results(folder='track_day1_example', track_csv_separator=','):
-    workbook = openpyxl.load_workbook(filename=f"{folder}/results.xlsx")  # load excel file
+    workbook = openpyxl.load_workbook(filename=f"{folder}/results_input.xlsx")  # load excel file
     sheet = workbook.active  # open workbook
     excel_row_index = 2  # Start with second line
 
     readcard_table = read_readcard(folder)
 
-    while True:  # While loop over all rows (teams) in results.xlsx
+    while True:  # While loop over all rows (teams) in results_input.xlsx
         team_number = sheet[f'A{excel_row_index}'].value
 
         if team_number == 'STOP' or team_number is None:
@@ -212,7 +212,7 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         # order of CP
         sheet[f'K{excel_row_index}'].value = number_of_cp
         excel_row_index += 1
-    workbook.save(filename="output.xlsx")
+    workbook.save(filename=f"{folder}/results_output.xlsx")
 
 
 if __name__ == "__main__":
