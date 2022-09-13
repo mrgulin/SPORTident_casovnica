@@ -195,8 +195,8 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
             data_table['print_on'][id1] = matched_ids[0]
         data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
         final_cumulative_dead_time = data_table['cumulative_dead_time'][-1]
-        number_of_cp = np.sum(np.logical_and(data_table['found_point'],
-                                             np.logical_not(data_table['exceeded_maximum_time'])))
+        valid_cp = np.logical_and(data_table['found_point'], np.logical_not(data_table['exceeded_maximum_time']))
+        number_of_cp = np.sum(valid_cp)
         print(print_log(data_table, team_raw_table, start_time, finish_time, final_cumulative_dead_time, number_of_cp))
 
         # Ekipe SIID	Start	Cilj	Skupni cas (brez mrtvega)	Mrtvi cas opisno	mrtvi cas skupno	skupni cas final
@@ -211,6 +211,10 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         # number of exceded max time
         # order of CP
         sheet[f'K{excel_row_index}'].value = number_of_cp
+
+        for i in range(len(valid_cp)):
+            cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{excel_row_index}'
+            sheet[cell_name].value = '+' if valid_cp[i] else '-'
         excel_row_index += 1
     workbook.save(filename=f"{folder}/results_output.xlsx")
 
