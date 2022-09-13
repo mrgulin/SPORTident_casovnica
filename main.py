@@ -136,7 +136,8 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         if team_raw_table[0]['cp_id'] != 'START':
             raise Exception(f'Expected that first point is "START" and not {team_raw_table[0][0]}')
         start_time = team_raw_table[0]['time']
-
+        speed_trial_start = False
+        speed_trial_finish = False
         if team_raw_table[-1]['cp_id'] != 'FINISH':
             raise Exception(f'Expected that first point is "FINISH" and not {team_raw_table[-1][0]}')
         finish_time = team_raw_table[-1]['time']
@@ -193,6 +194,13 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
             data_table['exceeded_maximum_time'][id1] = team_raw_table['time'][matched_ids[0]] > \
                                                        data_table['maximum_time'][id1]
             data_table['print_on'][id1] = matched_ids[0]
+
+            if 'hitrostna_start' in cp:
+                speed_trial_start = team_raw_table['time'][matched_ids[-1]]
+            if 'hitrostna_cilj' in cp:
+                speed_trial_finish = team_raw_table['time'][matched_ids[-1]]
+
+
         data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
         final_cumulative_dead_time = data_table['cumulative_dead_time'][-1]
         valid_cp = np.logical_and(data_table['found_point'], np.logical_not(data_table['exceeded_maximum_time']))
@@ -211,7 +219,12 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         # number of exceded max time
         # order of CP
         sheet[f'K{excel_row_index}'].value = number_of_cp
-
+        if type(speed_trial_start) != bool and type(speed_trial_finish) != bool:
+            sheet[f'L{excel_row_index}'].value = convert_from_timedelta_to_time(speed_trial_finish - speed_trial_start)
+            # time trial
+        else:
+            sheet[f'L{excel_row_index}'].value = f"{'no start ' * (speed_trial_start == False)}" \
+                                                 f"{'no finish' * (speed_trial_finish == False)}"
         for i in range(len(valid_cp)):
             cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{excel_row_index}'
             sheet[cell_name].value = '+' if valid_cp[i] else '-'
