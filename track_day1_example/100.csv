@@ -1,0 +1,11 @@
+# Control point id,Maximum time from start,control point name (number),"Additional tags for either dead time (""mrtvi"") or speed trial (start = ""hitrostna_start"" or finish ""hitrostna_cilj""). Order and blank cells don't matter",
+41,00:50:00,1,mrtvi,
+42,01:25:00,2,mrtvi,
+57,01:50:00,3,,
+33,02:00:00,4,mrtvi,hitrostna_start
+52,02:45:00,5,,hitrostna_cilj
+36,03:15:00,6,mrtvi,
+62,03:20:00,7,mrtvi,
+35,04:30:00,8,,
+53,05:20:00,9,,
+49,05:50:00,10,,

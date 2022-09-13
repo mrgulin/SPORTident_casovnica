@@ -5,8 +5,8 @@ import datetime
 import warnings
 
 
-def read_readcard(name="readcard_dan1.csv"):
-    with open(f'kljucki/{name}', 'r') as conn:
+def read_readcard(folder, name="readcard.csv"):
+    with open(f'{folder}/{name}', 'r') as conn:
         course_table = conn.readlines()
     header = course_table[0].strip('\n').split('\t')
     result_table = []
@@ -82,12 +82,12 @@ def convert_from_timedelta_to_time(timedelta_obj):
                          timedelta_obj.seconds % 60)
 
 
-def recalculate_results(prefix='dan1'):
-    workbook = openpyxl.load_workbook(filename="results.xlsx")  # load excel file
+def recalculate_results(folder='track_day1_example', track_csv_separator=','):
+    workbook = openpyxl.load_workbook(filename=f"{folder}/results.xlsx")  # load excel file
     sheet = workbook.active  # open workbook
     excel_row_index = 2  # Start with second line
 
-    readcard_table = read_readcard()
+    readcard_table = read_readcard(folder)
 
     while True:  # While loop over all rows (teams) in results.xlsx
         team_number = sheet[f'A{excel_row_index}'].value
@@ -109,14 +109,17 @@ def recalculate_results(prefix='dan1'):
         team_raw_table = get_team_raw_table(team_siid, readcard_table)
         category = 100 * (int(team_number) // 100)
 
-        with open(f'trase/trasa_{category}_dan1.txt', 'r') as conn:
-            course_table = conn.readlines()
-        for line_id, line in enumerate(course_table):
-            course_table[line_id] = line.strip('\n').split('\t')
-            course_table[line_id][0] = int(course_table[line_id][0])
-            time_list = course_table[line_id][1].split(":")
+        with open(f'{folder}/{category}.csv', 'r') as conn:
+            text = conn.readlines()
+        course_table = []
+        for line_id, line in enumerate(text):
+            if line[0] == "#":
+                continue
+            course_table.append(line.strip('\n').split(track_csv_separator))
+            course_table[-1][0] = int(course_table[-1][0])
+            time_list = course_table[-1][1].split(":")
             # course_table[line_id][1] = datetime.datetime.strptime(course_table[line_id][1], '%H:%M:%S').time()
-            course_table[line_id][1] = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
+            course_table[-1][1] = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
                                                           seconds=float(time_list[2]))
 
         data_table = np.zeros(len(course_table), dtype=[('dead_time', object),
