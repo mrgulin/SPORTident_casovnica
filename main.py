@@ -105,6 +105,140 @@ def read_course_table(folder, category, track_csv_separator):
                                                  ('additional_args', object)])
     return course_table
 
+
+def calculate_results_for_one_team(team_siid, team_number, folder, readcard_table, track_csv_separator):
+    local_log = f'\tTeam number: {team_number}\n'
+    dead_time_text = ""
+    warning_text = ""
+    error_text = ""
+
+    team_raw_table = get_team_raw_table(team_siid, readcard_table)
+    if team_raw_table is False:
+        error_text = "No data from this card yet"
+        local_log += '\n There is no data from this team!'
+        return local_log, error_text, warning_text, dead_time_text, None, None, None, None, None, None, None, None
+
+    category = 100 * (int(team_number) // 100)
+
+    course_table = read_course_table(folder, category, track_csv_separator)
+    # Numpy array with columns: control point id, maximum time to get to control point, number of control point and
+    # additional arguments (cp_id, max_time_dif, cp_number, additional_args)
+
+    data_table = np.zeros(len(course_table), dtype=[('dead_time', object),
+                                                    ('cumulative_dead_time', object),
+                                                    ('maximum_time', object),
+                                                    ('found_point', bool),
+                                                    ('exceeded_max_time', bool),
+                                                    ('print_on', object),
+                                                    ('cp_number', int),
+                                                    ('maximum_time_wdt', object)  # without dead time
+                                                    ])
+
+    if team_raw_table[0]['cp_id'] != 'START':
+        raise Exception(f'Expected that first point is "START" and not {team_raw_table[0][0]}')
+    if team_raw_table[-1]['cp_id'] != 'FINISH':
+        raise Exception(f'Expected that first point is "FINISH" and not {team_raw_table[-1][0]}')
+
+    start_time = team_raw_table[0]['time']
+    finish_time = team_raw_table[-1]['time']
+
+    speed_trial_start = False
+    speed_trial_finish = False
+
+    previous_matched_raw_team_table_id = 0  # this is here to check if order of control points is okay
+    for id1, cp in enumerate(course_table):
+        # 3 things that need to be done in this for loop:
+        #   1. calculate maximum time (with dead time) for each control point
+        #   2. find dead time for each control point
+        #   3. check if control point was taken in right order
+
+        data_table['cp_number'][id1] = cp['cp_number']
+
+        if id1 == 0:  # First iteration
+            data_table['maximum_time_wdt'][id1] = start_time + cp['max_time_dif']
+            data_table['cumulative_dead_time'] = datetime.timedelta(0)
+        else:
+            data_table['maximum_time_wdt'][id1] = start_time + cp['max_time_dif']
+            data_table['cumulative_dead_time'][id1] = data_table['cumulative_dead_time'][id1 - 1] + \
+                                                      data_table['dead_time'][id1 - 1]
+
+        data_table['maximum_time'][id1] = start_time + data_table['cumulative_dead_time'][id1] + cp['max_time_dif']
+        matched_ids = np.where(team_raw_table['cp_id'] == cp['cp_id'])
+        matched_ids = matched_ids[0]
+
+        if len(matched_ids) == 0:  # There is no records of this control point on the card
+            data_table['dead_time'][id1] = datetime.timedelta()
+            data_table['found_point'][id1] = False
+            data_table['print_on'][id1] = str(previous_matched_raw_team_table_id) + "+"  # After previous match
+            continue
+
+        if not min(matched_ids) > previous_matched_raw_team_table_id:
+            # There was already a record of control point recorded after current matched cp. This means that order
+            # wasn't correct
+            error_text += "Order of control points is not correct! "
+        previous_matched_raw_team_table_id = max(matched_ids)
+
+        if len(matched_ids) == 1:
+            # This means that control point was recorded only once so there is no problem with dead time
+            data_table['dead_time'][id1] = datetime.timedelta(0)
+        elif len(matched_ids) == 2:
+            # This means that control point was recorded twice. The first control point is now start of dead time
+            # and second cp is the end.
+            dead_time_start_id = matched_ids[0]
+            dead_time_finish_id = matched_ids[1]
+            if abs(dead_time_start_id - dead_time_finish_id) != 1:
+                warning_text += f'Control points for dead time should be one after another' \
+                                f' but they are not! check!'
+            if 'mrtvi' not in cp['additional_args']:  # To be sure that dead time is given only on control points
+                # that are meant for it we introduce a keyword 'mrtvi' in order to explicitly hint on which cps we
+                # expect dead time. Otherwise we get a warning in the table.
+                warning_text += f'There is dead time where it was not supposed to happen' \
+                                f' (cp id = {cp[0]}), cp {cp[2]}'
+            data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
+                dead_time_start_id]
+            dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp['cp_id']}): " \
+                              f"{data_table['dead_time'][id1]}, "
+            # With this we can see in table which cps have contributed to dead time
+        else:
+            warning_text += 'Did not expect more than 2 records of the card!'
+
+        data_table['found_point'][id1] = True  # There is at least one record of this control point
+        exceeded_max_time: bool = team_raw_table['time'][matched_ids[0]] > data_table['maximum_time'][id1]
+        data_table['exceeded_max_time'][id1] = exceeded_max_time
+        data_table['print_on'][id1] = matched_ids[0]
+
+        if 'hitrostna_start' in cp['additional_args']:
+            speed_trial_start = team_raw_table['time'][matched_ids[-1]]
+        if 'hitrostna_cilj' in cp['additional_args']:
+            speed_trial_finish = team_raw_table['time'][matched_ids[0]]
+
+    data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
+    final_cumulative_dead_time = data_table['cumulative_dead_time'][-1]
+    valid_cp = np.logical_and(data_table['found_point'], np.logical_not(data_table['exceeded_max_time']))
+    valid_cp_num = np.sum(valid_cp)
+
+    local_log += print_log(data_table, team_raw_table, start_time, finish_time, final_cumulative_dead_time,
+                           valid_cp_num)
+    local_log += '\nTime trial time: '
+    if type(speed_trial_start) != bool and type(speed_trial_finish) != bool:
+        time_trial_return = convert_from_timedelta_to_time(speed_trial_finish - speed_trial_start)
+        local_log += f'{time_trial_return} = ' \
+                     f'{speed_trial_finish.strftime("%H:%M:%S")} - {speed_trial_start.strftime("%H:%M:%S")}\n'
+        # time trial
+    else:
+        time_trial_return = f"{'no start ' * (speed_trial_start == False)}{'no finish' * (speed_trial_finish == False)}"
+        local_log += f"{'no start ' * (speed_trial_start == False)}" \
+                     f"{'no finish' * (speed_trial_finish == False)}\n"
+
+    control_points_index_order = [i for i in data_table['print_on'] if not isinstance(i, Iterable)]
+    if control_points_index_order == sorted(control_points_index_order):
+        correct_order_text = "Correct order of control points"
+    else:
+        error_text += "Order of control points is not correct! "
+
+    return local_log, error_text, warning_text, dead_time_text, valid_cp, valid_cp_num, final_cumulative_dead_time,\
+           time_trial_return, data_table, correct_order_text, start_time, finish_time
+
 def recalculate_results(folder='track_day1_example', track_csv_separator=','):
     workbook = openpyxl.load_workbook(filename=f"{folder}/results_input.xlsx")  # load excel file
     sheet = workbook.active  # open workbook
@@ -123,156 +257,28 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         team_siid = int(sheet[f'B{excel_row_index}'].value)
         global_log += f'\n{"-" * 83}\n{"-" * 83}\n\n'
 
+        ret = calculate_results_for_one_team(team_siid, team_number, folder, readcard_table, track_csv_separator)
+        local_log, error_text, warning_text, dead_time_text, valid_cp, valid_cp_num, final_cumulative_dead_time, \
+            time_trial_return, data_table, correct_order_text, start_time, finish_time = ret
 
+        sheet[f'N{excel_row_index}'].value = error_text
+        if error_text == '':
+            sheet[f'C{excel_row_index}'].value = start_time.time()  # Start
+            sheet[f'D{excel_row_index}'].value = finish_time.time()  # Finish
+            sheet[f'E{excel_row_index}'].value = convert_from_timedelta_to_time(finish_time - start_time)  # without dt
+            sheet[f'F{excel_row_index}'].value = dead_time_text
+            sheet[f'G{excel_row_index}'].value = convert_from_timedelta_to_time(final_cumulative_dead_time)  # tot dt
+            sheet[f'H{excel_row_index}'].value = convert_from_timedelta_to_time(
+                finish_time - start_time - final_cumulative_dead_time)  # tot time wdt
+            sheet[f'I{excel_row_index}'].value = correct_order_text
+            sheet[f'J{excel_row_index}'].value = sum(data_table['found_point']) - valid_cp_num  # # of exceeded max time
+            sheet[f'K{excel_row_index}'].value = valid_cp_num
+            sheet[f'L{excel_row_index}'].value = time_trial_return  # Time trial
+            sheet[f'M{excel_row_index}'].value = warning_text
 
-
-        local_log = f'\tTeam number: {team_number}\n'
-        dead_time_text = ""
-        warning_text = ""
-        error_text = ""
-
-        team_raw_table = get_team_raw_table(team_siid, readcard_table)
-        if team_raw_table is False:
-            sheet[f'N{excel_row_index}'].value = "No data from this card yet"
-            excel_row_index += 1
-            local_log += '\n There is no data from this team!'
-            global_log += local_log
-            continue
-
-        category = 100 * (int(team_number) // 100)
-
-        course_table = read_course_table(folder, category, track_csv_separator)
-        # Numpy array with columns: control point id, maximum time to get to control point, number of control point and
-        # additional arguments (cp_id, max_time_dif, cp_number, additional_args)
-
-        data_table = np.zeros(len(course_table), dtype=[('dead_time', object),
-                                                        ('cumulative_dead_time', object),
-                                                        ('maximum_time', object),
-                                                        ('found_point', bool),
-                                                        ('exceeded_max_time', bool),
-                                                        ('print_on', object),
-                                                        ('cp_number', int),
-                                                        ('maximum_time_wdt', object)  # without dead time
-                                                        ])
-
-        if team_raw_table[0]['cp_id'] != 'START':
-            raise Exception(f'Expected that first point is "START" and not {team_raw_table[0][0]}')
-        if team_raw_table[-1]['cp_id'] != 'FINISH':
-            raise Exception(f'Expected that first point is "FINISH" and not {team_raw_table[-1][0]}')
-
-        start_time = team_raw_table[0]['time']
-        finish_time = team_raw_table[-1]['time']
-
-        speed_trial_start = False
-        speed_trial_finish = False
-
-        previous_matched_raw_team_table_id = 0  # this is here to check if order of control points is okay
-        for id1, cp in enumerate(course_table):
-            # 3 things that need to be done in this for loop:
-            #   1. calculate maximum time (with dead time) for each control point
-            #   2. find dead time for each control point
-            #   3. check if control point was taken in right order
-
-            data_table['cp_number'][id1] = cp['cp_number']
-
-            if id1 == 0:  # First iteration
-                data_table['maximum_time_wdt'][id1] = start_time + cp['max_time_dif']
-                data_table['cumulative_dead_time'] = datetime.timedelta(0)
-            else:
-                data_table['maximum_time_wdt'][id1] = start_time + cp['max_time_dif']
-                data_table['cumulative_dead_time'][id1] = data_table['cumulative_dead_time'][id1 - 1] + \
-                                                          data_table['dead_time'][id1 - 1]
-
-            data_table['maximum_time'][id1] = start_time + data_table['cumulative_dead_time'][id1] + cp['max_time_dif']
-            matched_ids = np.where(team_raw_table['cp_id'] == cp['cp_id'])
-            matched_ids = matched_ids[0]
-
-            if len(matched_ids) == 0:  # There is no records of this control point on the card
-                data_table['dead_time'][id1] = datetime.timedelta()
-                data_table['found_point'][id1] = False
-                data_table['print_on'][id1] = str(previous_matched_raw_team_table_id) + "+"  # After previous match
-                continue
-
-            if not min(matched_ids) > previous_matched_raw_team_table_id:
-                # There was already a record of control point recorded after current matched cp. This means that order
-                # wasn't correct
-                error_text += "Order of control points is not correct! "
-            previous_matched_raw_team_table_id = max(matched_ids)
-
-            if len(matched_ids) == 1:
-                # This means that control point was recorded only once so there is no problem with dead time
-                data_table['dead_time'][id1] = datetime.timedelta(0)
-            elif len(matched_ids) == 2:
-                # This means that control point was recorded twice. The first control point is now start of dead time
-                # and second cp is the end.
-                dead_time_start_id = matched_ids[0]
-                dead_time_finish_id = matched_ids[1]
-                if abs(dead_time_start_id - dead_time_finish_id) != 1:
-                    warning_text += f'Control points for dead time should be one after another' \
-                                    f' but they are not! check!'
-                if 'mrtvi' not in cp['additional_args']:  # To be sure that dead time is given only on control points
-                    # that are meant for it we introduce a keyword 'mrtvi' in order to explicitly hint on which cps we
-                    # expect dead time. Otherwise we get a warning in the table.
-                    warning_text += f'There is dead time where it was not supposed to happen' \
-                                    f' (cp id = {cp[0]}), cp {cp[2]}'
-                data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
-                    dead_time_start_id]
-                dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp['cp_id']}): " \
-                                  f"{data_table['dead_time'][id1]}, "
-                # With this we can see in table which cps have contributed to dead time
-            else:
-                warning_text += 'Did not expect more than 2 records of the card!'
-
-            data_table['found_point'][id1] = True  # There is at least one record of this control point
-            exceeded_max_time: bool = team_raw_table['time'][matched_ids[0]] > data_table['maximum_time'][id1]
-            data_table['exceeded_max_time'][id1] = exceeded_max_time
-            data_table['print_on'][id1] = matched_ids[0]
-
-            if 'hitrostna_start' in cp['additional_args']:
-                speed_trial_start = team_raw_table['time'][matched_ids[-1]]
-            if 'hitrostna_cilj' in cp['additional_args']:
-                speed_trial_finish = team_raw_table['time'][matched_ids[0]]
-
-        data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
-        final_cumulative_dead_time = data_table['cumulative_dead_time'][-1]
-        valid_cp = np.logical_and(data_table['found_point'], np.logical_not(data_table['exceeded_max_time']))
-        number_of_cp = np.sum(valid_cp)
-
-        control_points_index_order = [i for i in data_table['print_on'] if not isinstance(i, Iterable)]
-        if control_points_index_order == sorted(control_points_index_order):
-            sheet[f'I{excel_row_index}'].value = "Correct order of control points"
-        else:
-            error_text += "Order of control points is not correct! "
-
-        local_log += print_log(data_table, team_raw_table, start_time, finish_time, final_cumulative_dead_time,
-                               number_of_cp)
-        if error_text != '':
-            sheet[f'N{excel_row_index}'].value = error_text
-            continue
-        sheet[f'C{excel_row_index}'].value = start_time.time()  # Start
-        sheet[f'D{excel_row_index}'].value = finish_time.time()  # Finish
-        sheet[f'E{excel_row_index}'].value = convert_from_timedelta_to_time(finish_time - start_time)  # tot time wdt
-        sheet[f'F{excel_row_index}'].value = dead_time_text
-        sheet[f'G{excel_row_index}'].value = convert_from_timedelta_to_time(final_cumulative_dead_time)  # tot time wdt
-        sheet[f'H{excel_row_index}'].value = convert_from_timedelta_to_time(
-            finish_time - start_time - final_cumulative_dead_time)  # tot time wdt
-        sheet[f'J{excel_row_index}'].value = sum(data_table['found_point']) - number_of_cp  # number of exceded max time
-        sheet[f'K{excel_row_index}'].value = number_of_cp
-        sheet[f'M{excel_row_index}'].value = warning_text
-        local_log += '\nTime trial time: '
-        if type(speed_trial_start) != bool and type(speed_trial_finish) != bool:
-            sheet[f'L{excel_row_index}'].value = convert_from_timedelta_to_time(speed_trial_finish - speed_trial_start)
-            local_log += f'{convert_from_timedelta_to_time(speed_trial_finish - speed_trial_start)} = ' \
-                         f'{speed_trial_finish.strftime("%H:%M:%S")} - {speed_trial_start.strftime("%H:%M:%S")}\n'
-            # time trial
-        else:
-            sheet[f'L{excel_row_index}'].value = f"{'no start ' * (speed_trial_start == False)}" \
-                                                 f"{'no finish' * (speed_trial_finish == False)}"
-            local_log += f"{'no start ' * (speed_trial_start == False)}" \
-                         f"{'no finish' * (speed_trial_finish == False)}\n"
-        for i in range(len(valid_cp)):
-            cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{excel_row_index}'
-            sheet[cell_name].value = '+' if valid_cp[i] else '-'
+            for i in range(len(valid_cp)):
+                cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{excel_row_index}'
+                sheet[cell_name].value = '+' if valid_cp[i] else '-'
         global_log += local_log
         excel_row_index += 1
     print(global_log)
