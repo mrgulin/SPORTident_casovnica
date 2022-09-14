@@ -126,7 +126,7 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
             time_list = course_table[-1][1].split(":")
             # course_table[line_id][1] = datetime.datetime.strptime(course_table[line_id][1], '%H:%M:%S').time()
             course_table[-1][1] = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
-                                                          seconds=float(time_list[2]))
+                                                     seconds=float(time_list[2]))
 
         data_table = np.zeros(len(course_table), dtype=[('dead_time', object),
                                                         ('cumulative_dead_time', object),
@@ -191,13 +191,13 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
                     warning_text += f'Control points for  dead time should be one after another' \
                                     f' but they are not! check!'
                 if 'mrtvi' not in cp:
-                    warning_text +=  f'There is dead time where it was not supposed to happen' \
-                                     f' (cp id = {cp[0]}), cp {cp[2]}'
+                    warning_text += f'There is dead time where it was not supposed to happen' \
+                                    f' (cp id = {cp[0]}), cp {cp[2]}'
                 data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
                     dead_time_start_id]
-                dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp_id}): { data_table['dead_time'][id1]}, "
+                dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp_id}): {data_table['dead_time'][id1]}, "
             else:
-                warning_text +=  'Did not expect more than 2 records of the card!'
+                warning_text += 'Did not expect more than 2 records of the card!'
             data_table['found_point'][id1] = True
             data_table['exceeded_maximum_time'][id1] = team_raw_table['time'][matched_ids[0]] > \
                                                        data_table['maximum_time'][id1]
@@ -207,7 +207,6 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
                 speed_trial_start = team_raw_table['time'][matched_ids[-1]]
             if 'hitrostna_cilj' in cp:
                 speed_trial_finish = team_raw_table['time'][matched_ids[-1]]
-
 
         data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
         final_cumulative_dead_time = data_table['cumulative_dead_time'][-1]
@@ -225,8 +224,6 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         if error_text != '':
             sheet[f'N{excel_row_index}'].value = error_text
             continue
-        # Ekipe SIID	Start	Cilj	Skupni cas (brez mrtvega)	Mrtvi cas opisno	mrtvi cas skupno	skupni cas final
-        # prekoracitve casovnic	 Vrstni red Ktjev	Stevilo Ktjev	hitrostna cas
         sheet[f'C{excel_row_index}'].value = start_time.time()  # Start
         sheet[f'D{excel_row_index}'].value = finish_time.time()  # Finish
         sheet[f'E{excel_row_index}'].value = convert_from_timedelta_to_time(finish_time - start_time)  # tot time wdt
@@ -247,14 +244,14 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
             sheet[f'L{excel_row_index}'].value = f"{'no start ' * (speed_trial_start == False)}" \
                                                  f"{'no finish' * (speed_trial_finish == False)}"
             local_log += f"{'no start ' * (speed_trial_start == False)}" \
-                        f"{'no finish' * (speed_trial_finish == False)}\n"
+                         f"{'no finish' * (speed_trial_finish == False)}\n"
         for i in range(len(valid_cp)):
             cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{excel_row_index}'
             sheet[cell_name].value = '+' if valid_cp[i] else '-'
         global_log += local_log
         excel_row_index += 1
     print(global_log)
-    with open('logger.txt', 'w', encoding='UTF-8') as conn:
+    with open(f'{folder}/logger.txt', 'w', encoding='UTF-8') as conn:
         conn.write(global_log)
     workbook.save(filename=f"{folder}/results_output.xlsx")
 
