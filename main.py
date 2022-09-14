@@ -4,6 +4,7 @@ import os
 import datetime
 import warnings
 from collections.abc import Iterable
+import typing
 
 
 def read_readcard(folder, name="readcard.csv"):
@@ -121,12 +122,18 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         for line_id, line in enumerate(text):
             if line[0] == "#":
                 continue
-            course_table.append(line.strip('\n').split(track_csv_separator))
-            course_table[-1][0] = int(course_table[-1][0])
-            time_list = course_table[-1][1].split(":")
-            # course_table[line_id][1] = datetime.datetime.strptime(course_table[line_id][1], '%H:%M:%S').time()
-            course_table[-1][1] = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
+            line_split = line.strip('\n').split(track_csv_separator)
+            cp_id = int(line_split[0])
+            time_list = line_split[1].split(":")
+            max_time_dif = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
                                                      seconds=float(time_list[2]))
+            cp_number = int(line_split[2])
+            additional_arguments = [i for i in line_split[3:] if i != '']
+            course_table.append((cp_id, max_time_dif, cp_number, additional_arguments))
+        course_table = np.array(course_table, dtype=[('cp_id', int),
+                                                     ('max_time_dif', object),
+                                                     ('cp_number', int),
+                                                     ('additional_args', object)])
 
         data_table = np.zeros(len(course_table), dtype=[('dead_time', object),
                                                         ('cumulative_dead_time', object),
@@ -141,12 +148,15 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
 
         if team_raw_table[0]['cp_id'] != 'START':
             raise Exception(f'Expected that first point is "START" and not {team_raw_table[0][0]}')
-        start_time = team_raw_table[0]['time']
-        speed_trial_start = False
-        speed_trial_finish = False
+
         if team_raw_table[-1]['cp_id'] != 'FINISH':
             raise Exception(f'Expected that first point is "FINISH" and not {team_raw_table[-1][0]}')
+
+        start_time = team_raw_table[0]['time']
         finish_time = team_raw_table[-1]['time']
+
+        speed_trial_start = False
+        speed_trial_finish = False
 
         previous_team_id = 0  # this is here to check if order of control points is okay
         for id1, cp in enumerate(course_table):
@@ -155,21 +165,18 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
             #   2. find dead time for each control point
             #   3. check if control point was taken in right order
 
-            cp_id = cp[0]
-            time_diff: datetime.timedelta = cp[1]
-
-            data_table['cp_number'][id1] = cp[2]
+            data_table['cp_number'][id1] = cp['cp_number']
 
             if id1 == 0:
-                data_table['maximum_time_wdt'][id1] = start_time + time_diff
+                data_table['maximum_time_wdt'][id1] = start_time + cp['max_time_dif']
                 data_table['cumulative_dead_time'] = datetime.timedelta(0)
             else:
-                data_table['maximum_time_wdt'][id1] = start_time + time_diff
+                data_table['maximum_time_wdt'][id1] = start_time + cp['max_time_dif']
                 data_table['cumulative_dead_time'][id1] = data_table['cumulative_dead_time'][id1 - 1] + \
                                                           data_table['dead_time'][id1 - 1]
 
-            data_table['maximum_time'][id1] = start_time + data_table['cumulative_dead_time'][id1] + time_diff
-            matched_ids = np.where(team_raw_table['cp_id'] == cp_id)
+            data_table['maximum_time'][id1] = start_time + data_table['cumulative_dead_time'][id1] + cp['max_time_dif']
+            matched_ids = np.where(team_raw_table['cp_id'] == cp['cp_id'])
             matched_ids = matched_ids[0]
 
             if len(matched_ids) == 0:
@@ -190,12 +197,13 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
                 if abs(dead_time_start_id - dead_time_finish_id) != 1:
                     warning_text += f'Control points for  dead time should be one after another' \
                                     f' but they are not! check!'
-                if 'mrtvi' not in cp:
+                if 'mrtvi' not in cp['additional_args']:
                     warning_text += f'There is dead time where it was not supposed to happen' \
                                     f' (cp id = {cp[0]}), cp {cp[2]}'
                 data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
                     dead_time_start_id]
-                dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp_id}): {data_table['dead_time'][id1]}, "
+                dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp['cp_id']}): " \
+                                  f"{data_table['dead_time'][id1]}, "
             else:
                 warning_text += 'Did not expect more than 2 records of the card!'
             data_table['found_point'][id1] = True
@@ -203,9 +211,9 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
                                                        data_table['maximum_time'][id1]
             data_table['print_on'][id1] = matched_ids[0]
 
-            if 'hitrostna_start' in cp:
+            if 'hitrostna_start' in cp['additional_args']:
                 speed_trial_start = team_raw_table['time'][matched_ids[-1]]
-            if 'hitrostna_cilj' in cp:
+            if 'hitrostna_cilj' in cp['additional_args']:
                 speed_trial_finish = team_raw_table['time'][matched_ids[-1]]
 
         data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
