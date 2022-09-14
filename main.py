@@ -160,7 +160,7 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
         else:
             data_table['maximum_time_wdt'][id1] = start_time + cp['max_time_dif']
             data_table['cumulative_dead_time'][id1] = data_table['cumulative_dead_time'][id1 - 1] + \
-                                                      data_table['dead_time'][id1 - 1]
+                data_table['dead_time'][id1 - 1]
 
         data_table['maximum_time'][id1] = start_time + data_table['cumulative_dead_time'][id1] + cp['max_time_dif']
         matched_ids = np.where(team_raw_table['cp_id'] == cp['cp_id'])
@@ -234,10 +234,12 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
     if control_points_index_order == sorted(control_points_index_order):
         correct_order_text = "Correct order of control points"
     else:
+        correct_order_text = 'Wrong order!!'
         error_text += "Order of control points is not correct! "
 
-    return local_log, error_text, warning_text, dead_time_text, valid_cp, valid_cp_num, final_cumulative_dead_time,\
-           time_trial_return, data_table, correct_order_text, start_time, finish_time
+    return local_log, error_text, warning_text, dead_time_text, valid_cp, valid_cp_num, final_cumulative_dead_time, \
+        time_trial_return, data_table, correct_order_text, start_time, finish_time
+
 
 def recalculate_results(folder='track_day1_example', track_csv_separator=','):
     workbook = openpyxl.load_workbook(filename=f"{folder}/results_input.xlsx")  # load excel file
