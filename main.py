@@ -245,7 +245,8 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
     workbook = openpyxl.load_workbook(filename=f"{folder}/results_input.xlsx")  # load excel file
     sheet = workbook.active  # open workbook
     excel_row_index = 2  # Start with second line
-
+    result_table_string = f'{" " * 96}KT\nteam   siid     |  start       finish    mrtvi cas |  skupni cas   #KT ' \
+                          f' hitrostna | 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 warnings\n'
     readcard_table = read_readcard(folder)
 
     global_log = ""
@@ -262,28 +263,35 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
         ret = calculate_results_for_one_team(team_siid, team_number, folder, readcard_table, track_csv_separator)
         local_log, error_text, warning_text, dead_time_text, valid_cp, valid_cp_num, final_cumulative_dead_time, \
             time_trial_return, data_table, correct_order_text, start_time, finish_time = ret
-
-        sheet[f'N{excel_row_index}'].value = error_text
+        eri = excel_row_index
+        sheet[f'N{eri}'].value = error_text
         if error_text == '':
-            sheet[f'C{excel_row_index}'].value = start_time.time()  # Start
-            sheet[f'D{excel_row_index}'].value = finish_time.time()  # Finish
-            sheet[f'E{excel_row_index}'].value = convert_from_timedelta_to_time(finish_time - start_time)  # without dt
-            sheet[f'F{excel_row_index}'].value = dead_time_text
-            sheet[f'G{excel_row_index}'].value = convert_from_timedelta_to_time(final_cumulative_dead_time)  # tot dt
-            sheet[f'H{excel_row_index}'].value = convert_from_timedelta_to_time(
+            sheet[f'C{eri}'].value = start_time.time()  # Start
+            sheet[f'D{eri}'].value = finish_time.time()  # Finish
+            sheet[f'E{eri}'].value = convert_from_timedelta_to_time(finish_time - start_time)  # without dt
+            sheet[f'F{eri}'].value = dead_time_text
+            sheet[f'G{eri}'].value = convert_from_timedelta_to_time(final_cumulative_dead_time)  # tot dt
+            sheet[f'H{eri}'].value = convert_from_timedelta_to_time(
                 finish_time - start_time - final_cumulative_dead_time)  # tot time wdt
-            sheet[f'I{excel_row_index}'].value = correct_order_text
-            sheet[f'J{excel_row_index}'].value = sum(data_table['found_point']) - valid_cp_num  # # of exceeded max time
-            sheet[f'K{excel_row_index}'].value = valid_cp_num
-            sheet[f'L{excel_row_index}'].value = time_trial_return  # Time trial
+            sheet[f'I{eri}'].value = correct_order_text
+            sheet[f'J{eri}'].value = sum(data_table['found_point']) - valid_cp_num  # # of exceeded max time
+            sheet[f'K{eri}'].value = valid_cp_num
+            sheet[f'L{eri}'].value = time_trial_return  # Time trial
             sheet[f'M{excel_row_index}'].value = warning_text
-
+            str1 = f"{team_number}    {team_siid}  |  {start_time.time()}    {finish_time.time()}  " \
+                   f"{sheet[f'G{eri}'].value}  |  {sheet[f'H{eri}'].value}    " \
+                   f"{sheet[f'K{eri}'].value:>2}    {sheet[f'L{eri}'].value}  |"
             for i in range(len(valid_cp)):
-                cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{excel_row_index}'
+                cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{eri}'
                 sheet[cell_name].value = '+' if valid_cp[i] else '-'
+                str1 += f" {'+' if valid_cp[i] else '-'} "
+        else:
+            str1 = f"{team_number}    {team_siid}  |  {error_text}  ||"
+        result_table_string += str1 + f'  {warning_text}\n'
         global_log += local_log
         excel_row_index += 1
-    print(global_log)
+    print(global_log, '\n\n\n')
+    print(result_table_string)
     with open(f'{folder}/logger.txt', 'w', encoding='UTF-8') as conn:
         conn.write(global_log)
     workbook.save(filename=f"{folder}/results_output.xlsx")
