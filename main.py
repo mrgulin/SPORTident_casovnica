@@ -4,11 +4,10 @@ import os
 import datetime
 import warnings
 from collections.abc import Iterable
-import typing
 
 
 def read_readcard(folder, name="readcard.csv"):
-    with open(f'{folder}/{name}', 'r') as conn:
+    with open(f'{folder}/{name}', 'r', encoding='iso-8859-1') as conn:
         course_table = conn.readlines()
     header = course_table[0].strip('\n').split('\t')
     result_table = []
