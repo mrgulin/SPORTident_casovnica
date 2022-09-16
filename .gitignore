@@ -127,3 +127,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# my things
+kljucki/
+trase/
+track_day1_example/
+test_system3/
+
+.idea
