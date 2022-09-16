@@ -136,3 +136,6 @@ track_day1_example/
 test_system3/
 
 .idea
+
+readcard*.csv
+~$*.xlsx
