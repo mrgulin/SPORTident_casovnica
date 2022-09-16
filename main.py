@@ -4,15 +4,26 @@ import os
 import datetime
 import warnings
 from collections.abc import Iterable
+from shutil import copy
 
 
-def read_readcard(folder, name="readcard.csv"):
-    with open(f'{folder}/{name}', 'r', encoding='iso-8859-1') as conn:
+def read_readcard(folder, name="readcard.csv", autorecover_name=False):
+    filename = f'{folder}/{name}'
+    if autorecover_name:
+        file_list = os.listdir('datadump')
+        file_list = sorted(file_list)
+        file_list = [i for i in file_list if 'readcard_' in i]
+        filename = f"datadump/" + file_list[-1]
+
+        if os.path.isfile(f'{folder}/readcard_copy.csv'):
+            os.remove(f'{folder}/readcard_copy.csv')
+        copy(filename, f'{folder}/readcard_copy.csv')
+    with open(filename, 'r', encoding='iso-8859-1') as conn:
         course_table = conn.readlines()
-    header = course_table[0].strip('\n').split('\t')
+    header = course_table[0].strip('\n').split(';')
     result_table = []
     for line_id, line in enumerate(course_table[1:]):
-        result_table.append(line.strip('\n').split('\t'))
+        result_table.append(line.strip('\n').split(';'))
     max_len = max([len(i) for i in result_table])
     header = header[:max_len]
     for id1, line in enumerate(result_table):
@@ -91,12 +102,15 @@ def read_course_table(folder, category, track_csv_separator):
         if line[0] == "#":
             continue
         line_split = line.strip('\n').split(track_csv_separator)
+        line_split = [i for i in line_split if i != '']
+        if len(line_split) == 0:
+            continue
         cp_id = int(line_split[0])
         time_list = line_split[1].split(":")
         max_time_dif = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
                                           seconds=float(time_list[2]))
         cp_number = int(line_split[2])
-        additional_arguments = [i for i in line_split[3:] if i != '']
+        additional_arguments = line_split[3:]
         course_table.append((cp_id, max_time_dif, cp_number, additional_arguments))
     course_table = np.array(course_table, dtype=[('cp_id', int),
                                                  ('max_time_dif', object),
@@ -110,6 +124,9 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
     dead_time_text = ""
     warning_text = ""
     error_text = ""
+
+    if not os.path.isdir(f'{folder}/logs'):
+        os.mkdir(f'{folder}/logs')
 
     team_raw_table = get_team_raw_table(team_siid, readcard_table)
     if team_raw_table is False:
@@ -188,8 +205,8 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
             if abs(dead_time_start_id - dead_time_finish_id) != 1:
                 warning_text += f'Control points for dead time should be one after another' \
                                 f' but they are not! check!'
-            if 'mrtvi' not in cp['additional_args']:  # To be sure that dead time is given only on control points
-                # that are meant for it we introduce a keyword 'mrtvi' in order to explicitly hint on which cps we
+            if 'mrtvi_cas' not in cp['additional_args']:  # To be sure that dead time is given only on control points
+                # that are meant for it we introduce a keyword 'mrtvi_cas' in order to explicitly hint on which cps we
                 # expect dead time. Otherwise we get a warning in the table.
                 warning_text += f'There is dead time where it was not supposed to happen' \
                                 f' (cp id = {cp[0]}), cp {cp[2]}'
@@ -236,17 +253,20 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
         correct_order_text = 'Wrong order!!'
         error_text += "Order of control points is not correct! "
 
+    with open(f'{folder}/logs/{team_number}.txt', 'w') as conn:
+        conn.write(local_log)
+
     return local_log, error_text, warning_text, dead_time_text, valid_cp, valid_cp_num, final_cumulative_dead_time, \
         time_trial_return, data_table, correct_order_text, start_time, finish_time
 
 
-def recalculate_results(folder='track_day1_example', track_csv_separator=','):
+def recalculate_results(folder='track_day1_example', track_csv_separator=',', automatic_readcard_name=True):
     workbook = openpyxl.load_workbook(filename=f"{folder}/results_input.xlsx")  # load excel file
     sheet = workbook.active  # open workbook
     excel_row_index = 2  # Start with second line
-    result_table_string = f'{" " * 96}KT\nteam   siid     |  start       finish    mrtvi cas |  skupni cas   #KT ' \
-                          f' hitrostna | 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 warnings\n'
-    readcard_table = read_readcard(folder)
+    result_table_string = f'{" " * 96}KT\nteam   siid    |  start       finish    mrtvi cas |  skupni cas   #KT ' \
+                          f' hitrostna{" " * 10} | 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 warnings\n'
+    readcard_table = read_readcard(folder, autorecover_name=automatic_readcard_name)
 
     global_log = ""
 
@@ -277,9 +297,10 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
             sheet[f'K{eri}'].value = valid_cp_num
             sheet[f'L{eri}'].value = time_trial_return  # Time trial
             sheet[f'M{excel_row_index}'].value = warning_text
+            time_trial_string = f"{str(sheet[f'L{eri}'].value):<18}"
             str1 = f"{team_number}    {team_siid}  |  {start_time.time()}    {finish_time.time()}  " \
                    f"{sheet[f'G{eri}'].value}  |  {sheet[f'H{eri}'].value}    " \
-                   f"{sheet[f'K{eri}'].value:>2}    {sheet[f'L{eri}'].value}  |"
+                   f"{sheet[f'K{eri}'].value:>2}    {time_trial_string}  |"
             for i in range(len(valid_cp)):
                 cell_name = f'{openpyxl.utils.cell.get_column_letter(i + 15)}{eri}'
                 sheet[cell_name].value = '+' if valid_cp[i] else '-'
@@ -297,4 +318,4 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=','):
 
 
 if __name__ == "__main__":
-    recalculate_results()
+    recalculate_results(folder='test_system')

@@ -1,0 +1,16 @@
+	Team number: 206
+ id       punched   | cp      dead     max time    cumulative   real max        in /
+                    |         time       w d t         d t        time          out 
+ START    11:38:15  |
+    71    11:38:16  |  1    0:00:00    11:38:20  +  0:00:00  =  11:38:20      inside
+    72    11:38:17  |  2    0:00:00    11:38:25  +  0:00:00  =  11:38:25      inside
+                    |  3    <<-------------------- missing cp  3 -------------------
+    76    11:38:18  |  4    0:00:00    11:38:35  +  0:00:00  =  11:38:35      inside
+    74    11:38:19  |  5    0:00:00    11:38:40  +  0:00:00  =  11:38:40      inside
+FINISH    11:38:21  |
+
+Number of valid control points: 4
+Final cumulative dead time: 0:00:00
+Time without dead time: 0:00:06
+Total time: 0:00:06
+Time trial time: no start 
