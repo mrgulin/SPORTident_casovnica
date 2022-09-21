@@ -2,7 +2,6 @@ import numpy as np
 import openpyxl
 import os
 import datetime
-import warnings
 from collections.abc import Iterable
 from shutil import copy
 
@@ -119,7 +118,8 @@ def read_course_table(folder, category, track_csv_separator):
     return course_table
 
 
-def calculate_results_for_one_team(team_siid, team_number, folder, readcard_table, track_csv_separator):
+def calculate_results_for_one_team(team_siid, team_number, folder, readcard_table, track_csv_separator,
+                                   comply_with_deadtime_tag=True):
     local_log = f'\tTeam number: {team_number}\n'
     dead_time_text = ""
     warning_text = ""
@@ -210,11 +210,14 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
                 # expect dead time. Otherwise we get a warning in the table.
                 warning_text += f'There is dead time where it was not supposed to happen' \
                                 f' (cp id = {cp[0]}), cp {cp[2]}'
-            data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
-                dead_time_start_id]
-            dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp['cp_id']}): " \
-                              f"{data_table['dead_time'][id1]}, "
-            # With this we can see in table which cps have contributed to dead time
+
+            if comply_with_deadtime_tag and ('mrtvi_cas' not in cp['additional_args']):
+                    data_table['dead_time'][id1] = datetime.datetime(0, 0, 0)
+            else:
+                data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
+                    dead_time_start_id]
+                dead_time_text += f"CP{data_table['cp_number'][id1]} (id {cp['cp_id']}): " \
+                                  f"{data_table['dead_time'][id1]}, "
         else:
             warning_text += 'Did not expect more than 2 records of the card!'
 
@@ -260,13 +263,14 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
         time_trial_return, data_table, correct_order_text, start_time, finish_time
 
 
-def recalculate_results(folder='track_day1_example', track_csv_separator=',', automatic_readcard_name=True):
+def recalculate_results(folder='test_system', track_csv_separator=',', automatic_readcard_name=True,
+                        readcard_filename='readcard.csv', comply_with_deadtime_tag=True):
     workbook = openpyxl.load_workbook(filename=f"{folder}/results_input.xlsx")  # load excel file
     sheet = workbook.active  # open workbook
     excel_row_index = 2  # Start with second line
     result_table_string = f'{" " * 96}KT\nteam   siid    |  start       finish    mrtvi cas |  skupni cas   #KT ' \
                           f' hitrostna{" " * 10} | 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 warnings\n'
-    readcard_table = read_readcard(folder, autorecover_name=automatic_readcard_name)
+    readcard_table = read_readcard(folder, readcard_filename, autorecover_name=automatic_readcard_name)
 
     global_log = ""
 
@@ -279,7 +283,8 @@ def recalculate_results(folder='track_day1_example', track_csv_separator=',', au
         team_siid = int(sheet[f'B{excel_row_index}'].value)
         global_log += f'\n{"-" * 83}\n{"-" * 83}\n\n'
 
-        ret = calculate_results_for_one_team(team_siid, team_number, folder, readcard_table, track_csv_separator)
+        ret = calculate_results_for_one_team(team_siid, team_number, folder, readcard_table, track_csv_separator,
+                                             comply_with_deadtime_tag)
         local_log, error_text, warning_text, dead_time_text, valid_cp, valid_cp_num, final_cumulative_dead_time, \
             time_trial_return, data_table, correct_order_text, start_time, finish_time = ret
         eri = excel_row_index
