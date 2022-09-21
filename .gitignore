@@ -137,5 +137,6 @@ test_system3/
 
 .idea
 
+readcard*.csv.backup
 readcard*.csv
 ~$*.xlsx
