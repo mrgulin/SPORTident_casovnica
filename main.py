@@ -101,7 +101,7 @@ def read_course_table(folder, category, track_csv_separator):
         if line[0] == "#":
             continue
         line_split = line.strip('\n').split(track_csv_separator)
-        line_split = [i for i in line_split if i != '']
+        # line_split = [i for i in line_split if i != '']
         if len(line_split) == 0:
             continue
         cp_id = int(line_split[0])
@@ -109,11 +109,21 @@ def read_course_table(folder, category, track_csv_separator):
         max_time_dif = datetime.timedelta(hours=float(time_list[0]), minutes=float(time_list[1]),
                                           seconds=float(time_list[2]))
         cp_number = int(line_split[2])
-        additional_arguments = line_split[3:]
-        course_table.append((cp_id, max_time_dif, cp_number, additional_arguments))
+        try:
+            dead_time = int(line_split[3])
+        except ValueError:
+            if len(line_split[3]) == 0:
+                dead_time = 0
+            else:
+                dead_time = 1000  # This means no ID but double punching
+        speed_course = line_split[4]
+        additional_arguments = line_split[5:]
+        course_table.append((cp_id, max_time_dif, cp_number, dead_time, speed_course, additional_arguments))
     course_table = np.array(course_table, dtype=[('cp_id', int),
                                                  ('max_time_dif', object),
                                                  ('cp_number', int),
+                                                 ('dead_time_id', int),
+                                                 ('speed_course', '<U50'),
                                                  ('additional_args', object)])
     return course_table
 
@@ -205,14 +215,14 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
             if abs(dead_time_start_id - dead_time_finish_id) != 1:
                 warning_text += f'Control points for dead time should be one after another' \
                                 f' but they are not! check!'
-            if 'mrtvi_cas' not in cp['additional_args']:  # To be sure that dead time is given only on control points
+            if cp['dead_time_id'] == 0:  # To be sure that dead time is given only on control points
                 # that are meant for it we introduce a keyword 'mrtvi_cas' in order to explicitly hint on which cps we
                 # expect dead time. Otherwise we get a warning in the table.
                 warning_text += f'There is dead time where it was not supposed to happen' \
                                 f' (cp id = {cp[0]}), cp {cp[2]}'
 
-            if comply_with_deadtime_tag and ('mrtvi_cas' not in cp['additional_args']):
-                    data_table['dead_time'][id1] = datetime.datetime(0, 0, 0)
+            if comply_with_deadtime_tag and (cp['dead_time_id'] == 0):
+                    data_table['dead_time'][id1] = datetime.timedelta(0, 0, 0)
             else:
                 data_table['dead_time'][id1] = team_raw_table['time'][dead_time_finish_id] - team_raw_table['time'][
                     dead_time_start_id]
@@ -226,9 +236,9 @@ def calculate_results_for_one_team(team_siid, team_number, folder, readcard_tabl
         data_table['exceeded_max_time'][id1] = exceeded_max_time
         data_table['print_on'][id1] = matched_ids[0]
 
-        if 'hitrostna_start' in cp['additional_args']:
+        if 'start' in cp['speed_course'].lower():
             speed_trial_start = team_raw_table['time'][matched_ids[-1]]
-        if 'hitrostna_cilj' in cp['additional_args']:
+        if 'cilj' in cp['speed_course'].lower():
             speed_trial_finish = team_raw_table['time'][matched_ids[0]]
 
     data_table['cumulative_dead_time'][-1] = data_table['cumulative_dead_time'][-2] + data_table['dead_time'][-2]
@@ -323,4 +333,4 @@ def recalculate_results(folder='test_system', track_csv_separator=',', automatic
 
 
 if __name__ == "__main__":
-    recalculate_results(folder='test_system')
+    recalculate_results(folder='test_system', comply_with_deadtime_tag=False)
